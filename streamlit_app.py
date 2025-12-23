@@ -13,7 +13,13 @@ st.set_page_config(
 # --- CSS for clean embedding ---
 st.markdown("""
 <style>
-    .block-container {padding-top: 1rem; padding-bottom: 2rem;}
+    .block-container {
+            padding-top: 1rem;
+            padding-bottom: 0rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    # .block-container {padding-top: 1rem; padding-bottom: 2rem;}
     /* Make metrics stand out */
     div[data-testid="metric-container"] {
         background-color: #f0f2f6;
