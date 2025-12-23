@@ -25,7 +25,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # st.title("🎛️ Quantization Signal-to-Noise Ratio (SNR)")
-st.markdown("""###🎛️ Quantization Signal-to-Noise Ratio (SNR)""")
+st.markdown("### 🎛️ Quantization Signal-to-Noise Ratio (SNR)")
 st.markdown("""
 Explore how **Bit Depth**, **Signal Amplitude**, and **Quantizer Type** affect the quality of a digital signal.
 """)
