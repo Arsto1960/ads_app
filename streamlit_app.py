@@ -302,11 +302,11 @@ with st.sidebar:
     st.markdown("### 2. Signal Injection")
     sig_type = st.selectbox("Waveform", ["Sine Wave", "Uniform Random", "Gaussian"])
     c = st.slider("Backoff Factor (c)", 0.1, 10.0, 1.0, 0.1, help="Input gain. c < 1.0 causes clipping.")
-    c = st.slider("Frequency (Hz)",  1.0, 1000.0, 5.0)
+    f_hz = st.slider("Frequency (Hz)", 1.0, 1000.0, 5.0)
+    fs = 10000
     # with st.expander("Advanced Params"):
     #     f_hz = st.number_input("Frequency (Hz)", 1.0, 1000.0, 5.0)
-
-    fs = 10000 
+    # fs = 10000 
 
 # ==============================================================================
 # 🧠 LOGIC & COMPUTATION
