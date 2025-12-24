@@ -1,3 +1,199 @@
+# import streamlit as st
+# import numpy as np
+# import matplotlib.pyplot as plt
+# from scipy.fft import fft, fftfreq
+
+# # --- Page Config ---
+# st.set_page_config(
+#     page_title="Quantization Lab",
+#     page_icon="🎛️",
+#     layout="wide"
+# )
+
+# # --- CSS for clean embedding ---
+# st.markdown("""
+# <style>
+#     .block-container {
+#             padding-top: 1rem;
+#             padding-bottom: 0rem;
+#             padding-left: 1rem;
+#             padding-right: 1rem;
+#         }
+#     # .block-container {padding-top: 1rem; padding-bottom: 2rem;}
+#     /* Make metrics stand out */
+#     div[data-testid="metric-container"] {
+#         background-color: #f0f2f6;
+#         border: 1px solid #e0e0e0;
+#         padding: 10px;
+#         border-radius: 5px;
+#     }
+# </style>
+# """, unsafe_allow_html=True)
+
+# # st.title("🎛️ Quantization Signal-to-Noise Ratio (SNR)")
+# st.markdown("### 🎛️ Quantization Signal-to-Noise Ratio (SNR)")
+# st.markdown("""
+# Explore how **Bit Depth**, **Signal Amplitude**, and **Quantizer Type** affect the quality of a digital signal.
+# """)
+
+# # --- Sidebar Controls ---
+# with st.sidebar:
+#     st.header("1. ADC Settings")
+#     N = st.slider("Bit Depth (N)", 2, 16, 4, help="Number of bits determines the number of discrete levels.")
+#     quant_type = st.radio("Quantizer Type", ["Mid-Tread", "Mid-Rise"], help="Mid-Tread has a zero level. Mid-Rise does not.")
+    
+#     st.divider()
+    
+#     st.header("2. Signal Settings")
+#     sig_type = st.selectbox("Signal Shape", ["Sine Wave", "Uniform Random", "Gaussian"])
+#     c = st.slider("Backoff Factor (c)", 0.1, 10.0, 1.0, 0.1, help="Higher c = smaller signal. c < 1 causes clipping.")
+    
+#     # Advanced settings in expander
+#     with st.expander("Advanced"):
+#         f_hz = st.number_input("Frequency (Hz)", 1.0, 1000.0, 5.0)
+#         fs = 10000  # Fixed high sampling rate for simulation
+
+# # --- Logic & Computation ---
+
+# # 1. Setup Time and Range
+# duration = 1.0
+# t = np.linspace(0, duration, int(fs*duration), endpoint=False)
+# A_full_scale = 1.0 # The ADC range is -0.5 to +0.5 (Width A=1.0)
+
+# # 2. Generate Signal (Amplitude = A_full_scale / (2*c))
+# amp = A_full_scale / (2 * c)
+
+# if sig_type == "Sine Wave":
+#     x_clean = amp * np.sin(2 * np.pi * f_hz * t)
+#     # Theoretical SNR for Sine: 6.02N + 1.76 dB (minus backoff)
+#     theory_constant = 1.76 
+# elif sig_type == "Uniform Random":
+#     x_clean = (np.random.rand(len(t)) - 0.5) * (1.0/c) # Scaled uniform
+#     # Theoretical SNR for Uniform: 6.02N dB (minus backoff)
+#     theory_constant = 0.0
+# else: # Gaussian
+#     x_clean = np.random.normal(0, amp/3, len(t)) # approx fits in 3-sigma
+#     theory_constant = None # Hard to predict exact PDF match
+
+# # 3. Quantization Logic
+# L = 2**N
+# Delta = A_full_scale / L
+
+# # Normalize to step size
+# x_scaled = x_clean / Delta
+
+# if quant_type == "Mid-Tread":
+#     # Round to nearest integer (includes 0)
+#     x_int = np.floor(x_scaled + 0.5)
+# else:
+#     # Mid-Rise: Round to nearest half-integer (no 0)
+#     x_int = np.floor(x_scaled) + 0.5
+
+# # Re-scale and Simulate ADC Clipping (Saturation)
+# # ADC cannot output values outside its range
+# max_idx = (L // 2) - 1 if quant_type == "Mid-Tread" else (L // 2)
+# min_idx = -(L // 2)
+
+# x_int_clipped = np.clip(x_int, min_idx, max_idx)
+# x_quant = x_int_clipped * Delta
+
+# # 4. Error & SNR Calculation
+# error = x_clean - x_quant
+# signal_power = np.mean(x_clean**2)
+# noise_power = np.mean(error**2)
+
+# if noise_power > 0:
+#     measured_snr = 10 * np.log10(signal_power / noise_power)
+# else:
+#     measured_snr = 999.9 # Infinite SNR (perfect match)
+
+# # Theoretical SNR (valid only if not clipping)
+# if c >= 1.0 and theory_constant is not None:
+#     theory_snr = (6.02 * N) + theory_constant - (20 * np.log10(c))
+# else:
+#     theory_snr = None # Theory breaks down during clipping
+
+# # --- Dashboard Layout ---
+
+# # Metrics Row
+# col1, col2, col3, col4 = st.columns(4)
+# col1.metric("Step Size (Δ)", f"{Delta:.4f}", f"{L} Levels")
+# col2.metric("Signal Power", f"{signal_power:.4f}")
+# col3.metric("Measured SNR", f"{measured_snr:.2f} dB")
+# if theory_snr:
+#     col4.metric("Theoretical SNR", f"{theory_snr:.2f} dB", f"{measured_snr - theory_snr:.2f} diff")
+# else:
+#     col4.metric("Theoretical SNR", "N/A (Clipping/PDF)")
+
+# # Plots
+# tab1, tab2 = st.tabs(["Time Domain & Histogram", "Frequency Spectrum"])
+
+# with tab1:
+#     c1, c2 = st.columns([2, 1])
+    
+#     with c1:
+#         # Time Domain Plot (Zoomed)
+#         fig_time, ax_time = plt.subplots(figsize=(10, 5))
+#         zoom_samples = 200
+#         ax_time.plot(t[:zoom_samples], x_clean[:zoom_samples], label="Analog Input", color='tab:blue', alpha=0.6, linewidth=2)
+#         ax_time.step(t[:zoom_samples], x_quant[:zoom_samples], label="Digital Output", color='tab:red', where='mid')
+#         ax_time.set_title("Quantization Steps (Zoomed)", fontsize=14)
+#         ax_time.legend()
+#         ax_time.grid(True, alpha=0.3)
+#         st.pyplot(fig_time)
+
+#     with c2:
+#         # Error Histogram
+#         fig_hist, ax_hist = plt.subplots(figsize=(5, 5))
+#         ax_hist.hist(error, bins=50, density=True, color='gray', alpha=0.7)
+#         ax_hist.axvline(Delta/2, color='red', linestyle='--', label='+Δ/2')
+#         ax_hist.axvline(-Delta/2, color='red', linestyle='--', label='-Δ/2')
+#         ax_hist.set_title("Error Distribution (PDF)", fontsize=14)
+#         ax_hist.set_xlabel("Quantization Error")
+#         ax_hist.legend()
+#         ax_hist.grid(True, alpha=0.3)
+#         st.pyplot(fig_hist)
+
+# with tab2:
+#     # Frequency Spectrum (FFT)
+#     fig_fft, ax_fft = plt.subplots(figsize=(12, 5))
+    
+#     N_fft = len(x_clean)
+#     yf_signal = fft(x_clean)
+#     yf_noise = fft(error)
+#     xf = fftfreq(N_fft, 1/fs)[:N_fft//2]
+    
+#     # Normalize
+#     mag_signal = 2.0/N_fft * np.abs(yf_signal[0:N_fft//2])
+#     mag_noise = 2.0/N_fft * np.abs(yf_noise[0:N_fft//2])
+    
+#     ax_fft.plot(xf, 20*np.log10(mag_signal+1e-12), label="Signal", alpha=0.7)
+#     ax_fft.plot(xf, 20*np.log10(mag_noise+1e-12), label="Quantization Noise Floor", alpha=0.7, color='red', linewidth=0.5)
+    
+#     ax_fft.set_title("Frequency Spectrum (Notice the Noise Floor drop as N increases)", fontsize=14)
+#     ax_fft.set_xlabel("Frequency (Hz)")
+#     ax_fft.set_ylabel("Magnitude (dB)")
+#     ax_fft.legend(loc='upper right')
+#     ax_fft.grid(True, alpha=0.3)
+#     ax_fft.set_ylim(-120, 10)
+#     st.pyplot(fig_fft)
+
+# # --- Educational Expander ---
+# with st.expander("📚 Why doesn't the Theory match the Measurement exactly?"):
+#     st.markdown(r"""
+#     The "Rule of Thumb" formula ($SNR \approx 6.02N$) assumes the signal is **Uniformly Distributed** across the quantization steps.
+    
+#     1.  **Sine Waves:** A sine wave spends more time at the peaks than near zero. This shape actually results in a theoretical SNR of **$6.02N + 1.76$ dB**.
+#     2.  **Clipping:** If you lower the **Backoff (c)** below 1.0, the signal exceeds the ADC's range. This introduces massive distortion, causing the SNR to plummet far below the theoretical prediction.
+#     3.  **Backoff:** If you increase **c**, you aren't using the full range of bits. Every factor of 2 in backoff costs you roughly **1 bit** (6 dB) of resolution.
+#     """)
+
+
+
+
+
+
+
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,157 +201,215 @@ from scipy.fft import fft, fftfreq
 
 # --- Page Config ---
 st.set_page_config(
-    page_title="Quantization Lab",
+    page_title="Quantization Lab // Ops Center",
     page_icon="🎛️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# --- CSS for clean embedding ---
-st.markdown("""
+# ==============================================================================
+# 🎨 BLACK OPS THEME CONFIGURATION
+# ==============================================================================
+theme = {
+    "bg": "#0e1117",           # Deep dark background
+    "text": "#e0e0e0",         # Light grey text
+    "accent": "#00d4ff",       # Cyan accent (Signal)
+    "highlight": "#ff00ff",    # Magenta highlight (Quantization/Error)
+    "plot_bg": "#161b22",      # Plot background
+    "grid": "#303030"          # Grid lines
+}
+
+# --- CSS Injection ---
+st.markdown(f"""
 <style>
-    .block-container {
-            padding-top: 1rem;
-            padding-bottom: 0rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-    # .block-container {padding-top: 1rem; padding-bottom: 2rem;}
-    /* Make metrics stand out */
-    div[data-testid="metric-container"] {
-        background-color: #f0f2f6;
-        border: 1px solid #e0e0e0;
+    .stApp {{
+        background-color: {theme['bg']}; 
+        color: {theme['text']};
+    }}
+    /* Custom Metric Container */
+    div[data-testid="metric-container"] {{
+        border: 1px solid {theme['grid']};
         padding: 10px;
         border-radius: 5px;
-    }
+        background-color: {theme['plot_bg']};
+    }}
+    div[data-testid="stMetricValue"] {{
+        font-family: 'Courier New', Courier, monospace;
+        color: {theme['accent']};
+        font-weight: bold;
+    }}
+    h1, h2, h3, p, label {{
+        font-family: 'Helvetica', sans-serif;
+        color: {theme['text']} !important;
+    }}
+    /* Button Styling */
+    .stButton>button {{
+        border-radius: 4px;
+        border: 1px solid {theme['grid']};
+        background-color: {theme['plot_bg']};
+        color: {theme['text']};
+    }}
+    .stButton>button:hover {{
+        border-color: {theme['accent']};
+        color: {theme['accent']};
+    }}
 </style>
 """, unsafe_allow_html=True)
 
-# st.title("🎛️ Quantization Signal-to-Noise Ratio (SNR)")
-st.markdown("### 🎛️ Quantization Signal-to-Noise Ratio (SNR)")
-st.markdown("""
-Explore how **Bit Depth**, **Signal Amplitude**, and **Quantizer Type** affect the quality of a digital signal.
-""")
-
-# --- Sidebar Controls ---
-with st.sidebar:
-    st.header("1. ADC Settings")
-    N = st.slider("Bit Depth (N)", 2, 16, 4, help="Number of bits determines the number of discrete levels.")
-    quant_type = st.radio("Quantizer Type", ["Mid-Tread", "Mid-Rise"], help="Mid-Tread has a zero level. Mid-Rise does not.")
+# --- Plot Styling Helper ---
+def apply_theme_to_plot(fig, ax):
+    fig.patch.set_facecolor(theme['bg'])
     
+    # Handle list/array of axes vs single axis
+    if not isinstance(ax, (list, np.ndarray)):
+        ax = [ax]
+    elif hasattr(ax, 'flat'):
+        ax = ax.flat
+        
+    for a in ax:
+        a.set_facecolor(theme['plot_bg'])
+        a.tick_params(colors=theme['text'])
+        a.spines['bottom'].set_color(theme['text'])
+        a.spines['left'].set_color(theme['text'])
+        a.spines['top'].set_visible(False)
+        a.spines['right'].set_visible(False)
+        a.grid(True, color=theme['grid'], linestyle=':')
+        
+        # Update labels
+        a.xaxis.label.set_color(theme['text'])
+        a.yaxis.label.set_color(theme['text'])
+        a.title.set_color(theme['text'])
+        
+        # Legend styling
+        legend = a.get_legend()
+        if legend:
+            plt.setp(legend.get_texts(), color=theme['text'])
+            legend.get_frame().set_facecolor(theme['plot_bg'])
+            legend.get_frame().set_edgecolor(theme['grid'])
+
+# ==============================================================================
+# 🎛️ CONTROLS (Sidebar)
+# ==============================================================================
+with st.sidebar:
+    st.title("🎛️ QUANT-LAB")
+    st.markdown("Signal Integrity Analysis")
     st.divider()
     
-    st.header("2. Signal Settings")
-    sig_type = st.selectbox("Signal Shape", ["Sine Wave", "Uniform Random", "Gaussian"])
-    c = st.slider("Backoff Factor (c)", 0.1, 10.0, 1.0, 0.1, help="Higher c = smaller signal. c < 1 causes clipping.")
+    st.markdown("### 1. ADC Configuration")
+    N = st.slider("Bit Depth (N)", 2, 16, 4, help="More bits = More levels = Less Noise")
+    quant_type = st.radio("Quantizer Type", ["Mid-Tread", "Mid-Rise"], horizontal=True)
     
-    # Advanced settings in expander
-    with st.expander("Advanced"):
+    st.markdown("### 2. Signal Injection")
+    sig_type = st.selectbox("Waveform", ["Sine Wave", "Uniform Random", "Gaussian"])
+    c = st.slider("Backoff Factor (c)", 0.1, 10.0, 1.0, 0.1, help="Input gain. c < 1.0 causes clipping.")
+    
+    with st.expander("Advanced Params"):
         f_hz = st.number_input("Frequency (Hz)", 1.0, 1000.0, 5.0)
-        fs = 10000  # Fixed high sampling rate for simulation
+        fs = 10000 
 
-# --- Logic & Computation ---
+# ==============================================================================
+# 🧠 LOGIC & COMPUTATION
+# ==============================================================================
 
 # 1. Setup Time and Range
 duration = 1.0
 t = np.linspace(0, duration, int(fs*duration), endpoint=False)
-A_full_scale = 1.0 # The ADC range is -0.5 to +0.5 (Width A=1.0)
+A_full_scale = 1.0 
 
-# 2. Generate Signal (Amplitude = A_full_scale / (2*c))
+# 2. Generate Signal
 amp = A_full_scale / (2 * c)
 
 if sig_type == "Sine Wave":
     x_clean = amp * np.sin(2 * np.pi * f_hz * t)
-    # Theoretical SNR for Sine: 6.02N + 1.76 dB (minus backoff)
     theory_constant = 1.76 
 elif sig_type == "Uniform Random":
-    x_clean = (np.random.rand(len(t)) - 0.5) * (1.0/c) # Scaled uniform
-    # Theoretical SNR for Uniform: 6.02N dB (minus backoff)
+    x_clean = (np.random.rand(len(t)) - 0.5) * (1.0/c)
     theory_constant = 0.0
 else: # Gaussian
-    x_clean = np.random.normal(0, amp/3, len(t)) # approx fits in 3-sigma
-    theory_constant = None # Hard to predict exact PDF match
+    x_clean = np.random.normal(0, amp/3, len(t))
+    theory_constant = None 
 
 # 3. Quantization Logic
-L = 2**N
-Delta = A_full_scale / L
-
-# Normalize to step size
+L_levels = 2**N
+Delta = A_full_scale / L_levels
 x_scaled = x_clean / Delta
 
 if quant_type == "Mid-Tread":
-    # Round to nearest integer (includes 0)
     x_int = np.floor(x_scaled + 0.5)
 else:
-    # Mid-Rise: Round to nearest half-integer (no 0)
     x_int = np.floor(x_scaled) + 0.5
 
-# Re-scale and Simulate ADC Clipping (Saturation)
-# ADC cannot output values outside its range
-max_idx = (L // 2) - 1 if quant_type == "Mid-Tread" else (L // 2)
-min_idx = -(L // 2)
-
+# Clipping
+max_idx = (L_levels // 2) - 1 if quant_type == "Mid-Tread" else (L_levels // 2)
+min_idx = -(L_levels // 2)
 x_int_clipped = np.clip(x_int, min_idx, max_idx)
 x_quant = x_int_clipped * Delta
 
-# 4. Error & SNR Calculation
+# 4. Error & SNR
 error = x_clean - x_quant
 signal_power = np.mean(x_clean**2)
 noise_power = np.mean(error**2)
 
-if noise_power > 0:
-    measured_snr = 10 * np.log10(signal_power / noise_power)
-else:
-    measured_snr = 999.9 # Infinite SNR (perfect match)
+measured_snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else 999.9
 
-# Theoretical SNR (valid only if not clipping)
 if c >= 1.0 and theory_constant is not None:
     theory_snr = (6.02 * N) + theory_constant - (20 * np.log10(c))
 else:
-    theory_snr = None # Theory breaks down during clipping
+    theory_snr = None 
 
-# --- Dashboard Layout ---
+# ==============================================================================
+# 🖥️ DASHBOARD LAYOUT
+# ==============================================================================
 
-# Metrics Row
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Step Size (Δ)", f"{Delta:.4f}", f"{L} Levels")
-col2.metric("Signal Power", f"{signal_power:.4f}")
-col3.metric("Measured SNR", f"{measured_snr:.2f} dB")
+st.header("QUANTIZATION ANALYSIS CONSOLE")
+
+# --- Metrics Row ---
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Resolution (Δ)", f"{Delta:.4f}", f"{L_levels} Levels")
+m2.metric("Signal Power", f"{signal_power:.4f}")
+m3.metric("Measured SNR", f"{measured_snr:.2f} dB")
+
 if theory_snr:
-    col4.metric("Theoretical SNR", f"{theory_snr:.2f} dB", f"{measured_snr - theory_snr:.2f} diff")
+    delta_val = measured_snr - theory_snr
+    m4.metric("Theory SNR", f"{theory_snr:.2f} dB", f"{delta_val:.2f} dB deviation", delta_color="normal")
 else:
-    col4.metric("Theoretical SNR", "N/A (Clipping/PDF)")
+    m4.metric("Theory SNR", "INVALID (CLIPPING)", delta_color="off")
 
-# Plots
-tab1, tab2 = st.tabs(["Time Domain & Histogram", "Frequency Spectrum"])
+# --- Tabs for Visuals ---
+tab1, tab2 = st.tabs(["📊 TIME DOMAIN & ERROR", "📡 FREQUENCY SPECTRUM"])
 
 with tab1:
     c1, c2 = st.columns([2, 1])
     
     with c1:
-        # Time Domain Plot (Zoomed)
+        # Time Domain Plot
         fig_time, ax_time = plt.subplots(figsize=(10, 5))
-        zoom_samples = 200
-        ax_time.plot(t[:zoom_samples], x_clean[:zoom_samples], label="Analog Input", color='tab:blue', alpha=0.6, linewidth=2)
-        ax_time.step(t[:zoom_samples], x_quant[:zoom_samples], label="Digital Output", color='tab:red', where='mid')
-        ax_time.set_title("Quantization Steps (Zoomed)", fontsize=14)
+        zoom = 200
+        
+        # Plot styling for Dark Mode
+        ax_time.plot(t[:zoom], x_clean[:zoom], label="Analog Input", color=theme['accent'], alpha=0.6, linewidth=2)
+        ax_time.step(t[:zoom], x_quant[:zoom], label="Digital Output", color=theme['highlight'], where='mid', linewidth=1.5)
+        
+        ax_time.set_title("Signal Digitization (Zoomed)")
         ax_time.legend()
-        ax_time.grid(True, alpha=0.3)
+        apply_theme_to_plot(fig_time, ax_time)
         st.pyplot(fig_time)
 
     with c2:
-        # Error Histogram
+        # Histogram
         fig_hist, ax_hist = plt.subplots(figsize=(5, 5))
-        ax_hist.hist(error, bins=50, density=True, color='gray', alpha=0.7)
-        ax_hist.axvline(Delta/2, color='red', linestyle='--', label='+Δ/2')
-        ax_hist.axvline(-Delta/2, color='red', linestyle='--', label='-Δ/2')
-        ax_hist.set_title("Error Distribution (PDF)", fontsize=14)
+        
+        ax_hist.hist(error, bins=50, density=True, color='#444444', edgecolor=theme['text'], alpha=0.7)
+        ax_hist.axvline(Delta/2, color=theme['highlight'], linestyle='--', label='+Δ/2')
+        ax_hist.axvline(-Delta/2, color=theme['highlight'], linestyle='--', label='-Δ/2')
+        
+        ax_hist.set_title("Error PDF")
         ax_hist.set_xlabel("Quantization Error")
-        ax_hist.legend()
-        ax_hist.grid(True, alpha=0.3)
+        apply_theme_to_plot(fig_hist, ax_hist)
         st.pyplot(fig_hist)
 
 with tab2:
-    # Frequency Spectrum (FFT)
+    # Frequency Spectrum
     fig_fft, ax_fft = plt.subplots(figsize=(12, 5))
     
     N_fft = len(x_clean)
@@ -163,30 +417,37 @@ with tab2:
     yf_noise = fft(error)
     xf = fftfreq(N_fft, 1/fs)[:N_fft//2]
     
-    # Normalize
     mag_signal = 2.0/N_fft * np.abs(yf_signal[0:N_fft//2])
     mag_noise = 2.0/N_fft * np.abs(yf_noise[0:N_fft//2])
     
-    ax_fft.plot(xf, 20*np.log10(mag_signal+1e-12), label="Signal", alpha=0.7)
-    ax_fft.plot(xf, 20*np.log10(mag_noise+1e-12), label="Quantization Noise Floor", alpha=0.7, color='red', linewidth=0.5)
+    # Neon styling for spectrum
+    ax_fft.plot(xf, 20*np.log10(mag_signal+1e-12), label="Signal", color=theme['accent'], alpha=0.8)
+    ax_fft.plot(xf, 20*np.log10(mag_noise+1e-12), label="Quantization Noise Floor", color=theme['highlight'], alpha=0.6, linewidth=0.8)
     
-    ax_fft.set_title("Frequency Spectrum (Notice the Noise Floor drop as N increases)", fontsize=14)
+    ax_fft.set_title("Spectral Analysis (Noise Floor)")
     ax_fft.set_xlabel("Frequency (Hz)")
     ax_fft.set_ylabel("Magnitude (dB)")
     ax_fft.legend(loc='upper right')
-    ax_fft.grid(True, alpha=0.3)
-    ax_fft.set_ylim(-120, 10)
+    ax_fft.set_ylim(-140, 10)
+    
+    apply_theme_to_plot(fig_fft, ax_fft)
     st.pyplot(fig_fft)
 
-# --- Educational Expander ---
-with st.expander("📚 Why doesn't the Theory match the Measurement exactly?"):
+# --- Details ---
+with st.expander("📂 MISSION BRIEFING: THEORETICAL ANALYSIS"):
     st.markdown(r"""
-    The "Rule of Thumb" formula ($SNR \approx 6.02N$) assumes the signal is **Uniformly Distributed** across the quantization steps.
+    **Discrepancy Analysis:**
+    The standard formula $SNR \approx 6.02N$ applies specifically to signals with a **Uniform PDF**.
     
-    1.  **Sine Waves:** A sine wave spends more time at the peaks than near zero. This shape actually results in a theoretical SNR of **$6.02N + 1.76$ dB**.
-    2.  **Clipping:** If you lower the **Backoff (c)** below 1.0, the signal exceeds the ADC's range. This introduces massive distortion, causing the SNR to plummet far below the theoretical prediction.
-    3.  **Backoff:** If you increase **c**, you aren't using the full range of bits. Every factor of 2 in backoff costs you roughly **1 bit** (6 dB) of resolution.
+    1.  **Waveform Factor:** Sine waves concentrate energy at peaks, adding **+1.76 dB** to the theoretical limit.
+    2.  **Saturation Warning:** Setting `Backoff (c) < 1.0` clips the signal. This destroys SNR and invalidates the linear theory.
+    3.  **Efficiency:** Every bit added ($N+1$) lowers the noise floor by **~6 dB**.
     """)
+
+
+
+
+
 
 
 
