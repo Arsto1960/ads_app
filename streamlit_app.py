@@ -305,7 +305,7 @@ with st.sidebar:
     c = st.slider("Frequency (Hz)",  1.0, 1000.0, 5.0)
     # with st.expander("Advanced Params"):
     #     f_hz = st.number_input("Frequency (Hz)", 1.0, 1000.0, 5.0)
-    #     fs = 10000 
+        fs = 10000 
 
 # ==============================================================================
 # 🧠 LOGIC & COMPUTATION
